@@ -67,10 +67,12 @@ use strict;
 use Getopt::Long;
 
 my %collapsed;
+my @uncollapsed;
 
 sub remember_stack {
 	my ($stack, $count) = @_;
 	$collapsed{$stack} += $count;
+	push @uncollapsed, $stack;
 }
 my $annotate_kernel = 0; # put an annotation on kernel function
 my $annotate_jit = 0;   # put an annotation on jit symbols
@@ -80,11 +82,15 @@ my $include_pid = 0;	# include process ID with process name
 my $include_tid = 0;	# include process & thread ID with process name
 my $include_addrs = 0;	# include raw address where a symbol can't be found
 my $tidy_java = 1;	# condense Java signatures
-my $tidy_generic = 1;	# clean up function names a little
+my $tidy_generic = 0;	# clean up function names a little
 my $target_pname;	# target process name from perf invocation
 my $event_filter = "";    # event type filter, defaults to first encountered event
 my $event_defaulted = 0;  # whether we defaulted to an event (none provided)
 my $event_warning = 0;	  # if we printed a warning for the event
+my $demangle = 1;          # use c++filt to demangle names
+my $flamechart = 0;		# do not sort output (flamechart mode)
+my $begin_symbol = "";	# the symbol at the stack bottom at which to start
+my $end_symbol = "" ;   # the symbol at the stack top at which to end     
 
 my $show_inline = 0;
 my $show_context = 0;
@@ -96,7 +102,11 @@ GetOptions('inline' => \$show_inline,
            'all' => \$annotate_all,
            'tid' => \$include_tid,
            'addrs' => \$include_addrs,
-           'event-filter=s' => \$event_filter)
+           'event-filter=s' => \$event_filter,
+		   'demangle' => \$demangle,
+		   'flamechart' => \$flamechart,
+		   'begin=s' => \$begin_symbol,
+		   'end=s' => \$end_symbol)
 or die <<USAGE_END;
 USAGE: $0 [options] infile > outfile\n
 	--pid		# include PID with process names [1]
@@ -107,7 +117,9 @@ USAGE: $0 [options] infile > outfile\n
 	--jit		# annotate jit functions with a _[j]
 	--context	# adds source context to --inline
 	--addrs		# include raw addresses where symbols can't be found
-	--event-filter=EVENT	# event name filter\n
+	--event-filter=EVENT	# event name filter
+	--demangle	# demangle names starting with _Z using c++filt
+	--flamechart	# do not sort output (flamechart mode)\n
 [1] perf script must emit both PID and TIDs for these to work; eg, Linux < 4.1:
 	perf script -f comm,pid,tid,cpu,time,event,ip,sym,dso,trace
     for Linux >= 4.1:
@@ -191,6 +203,19 @@ while (defined($_ = <>)) {
 				unshift @stack, "";
 			}
 		}
+
+		if ($begin_symbol) {
+			while ($#stack >= 0 && $stack[0] !~ /^$begin_symbol/) { shift @stack; }
+		}
+		if ($end_symbol) {
+			foreach my $i (0..$#stack) {
+				if ($stack[$i] =~ /^$end_symbol/) {
+					$#stack = $i;  # shortens the array: last index is now $i
+					last;
+				}
+			}
+		}
+
 		remember_stack(join(";", @stack), 1) if @stack;
 		undef @stack;
 		undef $pname;
@@ -250,7 +275,7 @@ while (defined($_ = <>)) {
 	#
 	# stack line
 	#
-	} elsif (/^\s*(\w+)\s*(.+) \((\S*)\)/) {
+	} elsif (/^\s*(\w+)\s*(.+) \(((\/|\[)\S*)\)/) {
 		# ignore filtered samples
 		next if not $pname;
 
@@ -260,6 +285,11 @@ while (defined($_ = <>)) {
 		# 7fffb84c9afc cpu_startup_entry+0x800047c022ec ([kernel.kallsyms])
 		# strip these off:
 		$rawfunc =~ s/\+0x[\da-f]+$//;
+
+		# Demangle names (_ZN9Name...E)
+		if ($demangle && $rawfunc =~ /^_Z[^ ]+\d[^ ]+$/) {
+			chomp($rawfunc = `c++filt $rawfunc`);
+		}
 
 		if ($show_inline == 1 && $mod !~ m/(perf-\d+.map|kernel\.|\[[^\]]+\])/) {
 			unshift @stack, inline($pc, $mod);
@@ -340,6 +370,12 @@ while (defined($_ = <>)) {
 	}
 }
 
-foreach my $k (sort { $a cmp $b } keys %collapsed) {
-	print "$k $collapsed{$k}\n";
+if ($flamechart) {
+	foreach my $item (@uncollapsed) {
+		print "$item 1\n";
+	} 
+} else {
+	foreach my $k (sort { $a cmp $b } keys %collapsed) {
+		print "$k $collapsed{$k}\n";
+	}
 }

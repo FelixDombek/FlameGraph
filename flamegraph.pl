@@ -118,6 +118,7 @@ my $pal_file = "palette.map";   # palette map file name
 my $stackreverse = 0;           # reverse stack order, switching merge end
 my $inverted = 0;               # icicle graph
 my $flamechart = 0;             # produce a flame chart (sort by time, do not merge stacks)
+my $nonrev = 1;                 # FELIXDOMBEK: do not reverse data when using --flamechart
 my $negate = 0;                 # switch differential hues
 my $titletext = "";             # centered heading
 my $titledefault = "Flame Graph";	# overwritten by --title
@@ -149,6 +150,7 @@ USAGE: $0 [options] infile > outfile.svg\n
 	--reverse        # generate stack-reversed flame graph
 	--inverted       # icicle graph
 	--flamechart     # produce a flame chart (sort by time, do not merge stacks)
+	--nonrev         # FELIXDOMBEK: do not reverse data when using --flamechart
 	--negate         # switch differential hues (blue<->red)
 	--notes TEXT     # add notes comment in SVG (for debugging)
 	--help           # this message
@@ -180,6 +182,7 @@ GetOptions(
 	'reverse'     => \$stackreverse,
 	'inverted'    => \$inverted,
 	'flamechart'  => \$flamechart,
+	'nonrev'      => \$nonrev,
 	'negate'      => \$negate,
 	'notes=s'     => \$notestext,
 	'help'        => \$help,
@@ -625,7 +628,11 @@ foreach (<>) {
 
 if ($flamechart) {
 	# In flame chart mode, just reverse the data so time moves from left to right.
-	@SortedData = reverse @Data;
+	if ($nonrev) {
+		@SortedData = @Data;
+	} else {
+		@SortedData = reverse @Data;
+	}
 } else {
 	@SortedData = sort @Data;
 }
