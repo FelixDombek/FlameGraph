@@ -68,6 +68,7 @@ use Getopt::Long;
 
 my %collapsed;
 my @uncollapsed;
+my @end_symbols;
 
 sub remember_stack {
 	my ($stack, $count) = @_;
@@ -90,7 +91,7 @@ my $event_warning = 0;	  # if we printed a warning for the event
 my $demangle = 1;          # use c++filt to demangle names
 my $flamechart = 0;		# do not sort output (flamechart mode)
 my $begin_symbol = "";	# the symbol at the stack bottom at which to start
-my $end_symbol = "" ;   # the symbol at the stack top at which to end     
+my $end_symbol = "" ;   # the symbols (`|` separates multiple) at the stack top at which to end     
 
 my $show_inline = 0;
 my $show_context = 0;
@@ -131,6 +132,16 @@ if ($annotate_all) {
 	$annotate_kernel = $annotate_jit = 1;
 }
 
+if ($end_symbol) {
+	@end_symbols = split('\|', $end_symbol);
+}
+
+foreach my $end_sym (@end_symbols) {
+	print $end_sym, "\n";
+}
+
+print @end_symbols;
+
 # for the --inline option
 sub inline {
 	my ($pc, $mod) = @_;
@@ -168,6 +179,7 @@ my @stack;
 my $pname;
 my $m_pid;
 my $m_tid;
+my $counter = 0;
 
 #
 # Main loop
@@ -207,7 +219,8 @@ while (defined($_ = <>)) {
 		if ($begin_symbol) {
 			while ($#stack >= 0 && $stack[0] !~ /^$begin_symbol/) { shift @stack; }
 		}
-		if ($end_symbol) {
+		
+		foreach my $end_sym (@end_symbols) {
 			foreach my $i (0..$#stack) {
 				if ($stack[$i] =~ /^$end_symbol/) {
 					$#stack = $i;  # shortens the array: last index is now $i
@@ -215,6 +228,8 @@ while (defined($_ = <>)) {
 				}
 			}
 		}
+
+		if (++$counter % 1000 == 0) { print STDERR ".".$counter; }
 
 		remember_stack(join(";", @stack), 1) if @stack;
 		undef @stack;

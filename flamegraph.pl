@@ -101,9 +101,10 @@ my $encoding;
 my $fonttype = "Verdana";
 my $imagewidth = 1200;          # max width, pixels
 my $frameheight = 16;           # max height is dynamic
+my $autowidthminpx = 0;         # if set, make the smallest width block this many px wide and set the total width automatically
 my $fontsize = 12;              # base text size
 my $fontwidth = 0.59;           # avg width relative to fontsize
-my $minwidth = 0.1;             # min function width, pixels
+my $minwidth = 0.1;		        # min function width, pixels
 my $nametype = "Function:";     # what are the names in the data?
 my $countname = "samples";      # what are the counts in the data?
 my $colors = "hot";             # color theme
@@ -135,6 +136,7 @@ USAGE: $0 [options] infile > outfile.svg\n
 	--subtitle TEXT  # second level title (optional)
 	--width NUM      # width of image (default 1200)
 	--height NUM     # height of each frame (default 16)
+	--autowidthminpx NUM  # if set, make the smallest width block this many px wide and set the total width automatically
 	--minwidth NUM   # omit smaller functions (default 0.1 pixels)
 	--fonttype FONT  # font type (default "Verdana")
 	--fontsize NUM   # font size (default 12)
@@ -164,6 +166,7 @@ GetOptions(
 	'fonttype=s'  => \$fonttype,
 	'width=i'     => \$imagewidth,
 	'height=i'    => \$frameheight,
+	'autowidthminpx=i' => \$autowidthminpx,
 	'encoding=s'  => \$encoding,
 	'fontsize=f'  => \$fontsize,
 	'fontwidth=f' => \$fontwidth,
@@ -705,7 +708,14 @@ if ($timemax and $timemax < $time) {
 }
 $timemax ||= $time;
 
-my $widthpertime = ($imagewidth - 2 * $xpad) / $timemax;
+my $widthpertime;
+if ($autowidthminpx <= 0) {
+	$widthpertime = ($imagewidth - 2 * $xpad) / $timemax;
+} else {
+	$widthpertime = $autowidthminpx;
+	$imagewidth = $widthpertime * $timemax + 2 * $xpad;
+}
+
 my $minwidth_time = $minwidth / $widthpertime;
 
 # prune blocks that are too narrow and determine max depth
